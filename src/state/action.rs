@@ -27,6 +27,10 @@ pub enum UiAction {
         settings: ConversationNotificationSettings,
         previous: ConversationNotificationSettings,
     },
+    /// Saves Keybase's "Play a sound for new messages" setting.
+    SetNotifySound {
+        enabled: bool,
+    },
     Navigate(Route),
     /// Like Navigate but without triggering LoadConversation.
     /// Used by navigate_to_message to avoid a background load race with JumpToMessage.

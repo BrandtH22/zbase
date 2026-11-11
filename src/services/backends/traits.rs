@@ -215,6 +215,10 @@ pub enum RoutedBackendCommand {
         conversation: ProviderConversationRef,
         settings: ConversationNotificationSettings,
     },
+    SetNotifySound {
+        account_id: AccountId,
+        enabled: bool,
+    },
 }
 
 pub trait ChatBackend: Send {

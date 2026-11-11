@@ -5499,7 +5499,7 @@ impl AppWindow {
                 conversation_id: notification.conversation_id.clone(),
                 message_id: notification.message_id.clone(),
             },
-            notification.sound,
+            state.notifications.notify_sound,
         );
     }
 
@@ -6780,16 +6780,9 @@ impl AppWindow {
         }
     }
 
-    /// Applies at once and saves to Keybase in the background, undoing the
-    /// change if Keybase cannot store it.
+    /// Applies at once; a failed save to Keybase puts it back and says so.
     pub(crate) fn set_notification_sound(&mut self, enabled: bool, cx: &mut Context<Self>) {
-        notifications_service::set_sound_enabled(enabled);
-        std::thread::spawn(move || {
-            if let Err(error) = crate::services::backends::keybase::save_notify_sound(enabled) {
-                tracing::warn!("could not save the notification sound setting: {error}");
-                notifications_service::set_sound_enabled(!enabled);
-            }
-        });
+        self.dispatch_ui_action(UiAction::SetNotifySound { enabled });
         self.refresh(cx);
     }
 
@@ -9470,7 +9463,7 @@ impl AppWindow {
             sidebar_mode: self.models.sidebar.mode,
             updates: self.update_ui.snapshot.clone(),
             notification_permission: self.notification_permission,
-            notification_sound: notifications_service::sound_enabled(),
+            notification_sound: self.app_store.snapshot().notifications.notify_sound,
             account: app.current_user_id.as_ref().map(|user_id| {
                 crate::views::preferences::AccountSummary {
                     display_name: if app.current_user_display_name.trim().is_empty() {

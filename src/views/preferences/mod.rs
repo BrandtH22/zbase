@@ -269,7 +269,7 @@ fn notifications_row(permission: NotificationPermission) -> Option<AnyElement> {
         NotificationPermission::Unavailable => return None,
         NotificationPermission::Allowed => (
             "On. Each conversation's Keybase notification level decides which messages notify.",
-            OPEN_OS_SETTINGS,
+            notifications_service::OPEN_SETTINGS_LABEL,
             notifications_service::open_settings,
         ),
         NotificationPermission::NotAsked => (
@@ -278,17 +278,14 @@ fn notifications_row(permission: NotificationPermission) -> Option<AnyElement> {
             notifications_service::request_permission,
         ),
         NotificationPermission::Denied => (
-            if cfg!(target_os = "windows") {
-                "Off. Windows isn't allowing notifications from zBase."
-            } else {
-                "Off. macOS isn't allowing notifications from zBase."
-            },
-            OPEN_OS_SETTINGS,
+            notifications_service::DENIED_DESCRIPTION,
+            notifications_service::OPEN_SETTINGS_LABEL,
             notifications_service::open_settings,
         ),
+        // Only macOS reports this.
         NotificationPermission::Silenced => (
             "Off. zBase's alert style in System Settings is None.",
-            OPEN_OS_SETTINGS,
+            notifications_service::OPEN_SETTINGS_LABEL,
             notifications_service::open_settings,
         ),
     };
@@ -298,17 +295,11 @@ fn notifications_row(permission: NotificationPermission) -> Option<AnyElement> {
     Some(setting_row("Desktop notifications", description, button))
 }
 
-const OPEN_OS_SETTINGS: &str = if cfg!(target_os = "windows") {
-    "Open Windows Settings…"
-} else {
-    "Open System Settings…"
-};
-
 /// Keybase's own setting, so it matches the Keybase app.
 fn sound_row(on: bool, app: &WeakEntity<AppWindow>) -> AnyElement {
     setting_row(
         "Play a sound",
-        "For new message notifications. Shared with the Keybase app.",
+        "For new message notifications. Saved to the same setting as the Keybase app.",
         toggle(
             "preferences-notification-sound",
             on,

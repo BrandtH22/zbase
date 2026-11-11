@@ -189,6 +189,8 @@ pub struct UiCallState {
 pub struct UiNotificationsState {
     pub toasts: Vec<String>,
     pub notification_center_count: u32,
+    /// Keybase's "Play a sound for new messages" setting, off until loaded.
+    pub notify_sound: bool,
 }
 
 #[derive(Clone, Debug)]

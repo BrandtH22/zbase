@@ -29,8 +29,6 @@ pub struct DesktopNotification {
     /// The conversation as Keybase sent it with the message, for conversations
     /// not yet in the local inbox.
     pub conversation: Option<ConversationSummary>,
-    /// Keybase's "Play a sound for new messages" setting.
-    pub sound: bool,
 }
 
 /// Where the user is looking, for Keybase's "actively looking at this thread" check.
@@ -152,7 +150,6 @@ mod tests {
             author: "alice".to_string(),
             snippet: "alice: hi :wave:".to_string(),
             conversation: None,
-            sound: false,
         }
     }
 

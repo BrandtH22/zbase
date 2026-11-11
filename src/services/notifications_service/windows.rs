@@ -1,16 +1,8 @@
 //! Windows toasts. An unpackaged app needs a registered app user model ID for
 //! toasts to show; registering it also lists zBase under Settings → System →
 //! Notifications with its Banners, Sounds and Badges switches.
-use super::{ClickedNotification, clicked};
-use std::{
-    collections::VecDeque,
-    fs,
-    path::Path,
-    sync::{
-        Mutex,
-        atomic::{AtomicI32, Ordering},
-    },
-};
+use super::{ClickedNotification, NotificationPermission, clicked};
+use std::{collections::VecDeque, fs, io, path::Path, sync::Mutex};
 use windows::{
     Data::Xml::Dom::XmlDocument,
     Foundation::TypedEventHandler,
@@ -28,18 +20,23 @@ use windows::{
     core::{HSTRING, Result, w},
 };
 
-/// The macOS bundle identifier, also set on the installer's Start Menu shortcut.
+/// The macOS bundle identifier. scripts/windows/zbase.iss sets the same ID
+/// (`AppUserModelId`) on its shortcuts; keep the two in step.
 const APP_ID: &str = "com.zbase.app";
 const APP_NAME: &str = "zBase";
-const ICON: &[u8] = include_bytes!("../../../assets/windows/zBase.ico");
+const ICON: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/windows/zBase.ico"
+));
 /// Windows drops a toast's click handler with the toast's last reference, and
 /// Action Center keeps toasts for a while, so the recent ones stay alive.
 const KEPT_TOASTS: usize = 50;
 static TOASTS: Mutex<VecDeque<ToastNotification>> = Mutex::new(VecDeque::new());
-/// The codes `super::permission` maps; 0 until `start`.
-static PERMISSION: AtomicI32 = AtomicI32::new(0);
-const PERMISSION_DENIED: i32 = 2;
-const PERMISSION_ALLOWED: i32 = 3;
+/// Unavailable until `start`.
+static PERMISSION: Mutex<NotificationPermission> = Mutex::new(NotificationPermission::Unavailable);
+
+pub const OPEN_SETTINGS_LABEL: &str = "Open Windows Settings…";
+pub const DENIED_DESCRIPTION: &str = "Off. Windows isn't allowing notifications from zBase.";
 
 pub fn register_app() {
     // SAFETY: a plain call with a live string; it only affects this process.
@@ -58,15 +55,22 @@ fn register_app_id() -> windows_registry::Result<()> {
         .create(format!(r"Software\Classes\AppUserModelId\{APP_ID}"))?;
     key.set_string("DisplayName", APP_NAME)?;
     let icon = crate::services::local_store::paths::data_root().join("notification-icon.ico");
-    let written = fs::read(&icon).ok().as_deref() == Some(ICON)
-        || icon
-            .parent()
-            .is_some_and(|dir| fs::create_dir_all(dir).is_ok())
-            && fs::write(&icon, ICON).is_ok();
-    if written {
-        key.set_string("IconUri", icon.to_string_lossy().as_ref())?;
+    match ensure_icon_file(&icon) {
+        Ok(()) => key.set_string("IconUri", icon.to_string_lossy().as_ref())?,
+        Err(error) => tracing::warn!("could not write the notification icon: {error}"),
     }
     Ok(())
+}
+
+/// Windows reads the icon from a file, so the embedded one is copied out.
+fn ensure_icon_file(path: &Path) -> io::Result<()> {
+    if fs::read(path).is_ok_and(|existing| existing == ICON) {
+        return Ok(());
+    }
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    fs::write(path, ICON)
 }
 
 fn notifier() -> Result<ToastNotifier> {
@@ -178,8 +182,12 @@ pub fn seconds_since_user_input() -> f64 {
     f64::from(idle_ms) / 1000.0
 }
 
-pub fn permission() -> i32 {
-    PERMISSION.load(Ordering::Relaxed)
+pub fn permission() -> NotificationPermission {
+    PERMISSION
+        .lock()
+        .map_or(NotificationPermission::Unavailable, |permission| {
+            *permission
+        })
 }
 
 /// Windows answers at once, so this reads the switch in Settings directly.
@@ -187,14 +195,13 @@ pub fn refresh_permission() {
     let allowed = notifier()
         .and_then(|notifier| notifier.Setting())
         .is_ok_and(|setting| setting == NotificationSetting::Enabled);
-    PERMISSION.store(
-        if allowed {
-            PERMISSION_ALLOWED
+    if let Ok(mut permission) = PERMISSION.lock() {
+        *permission = if allowed {
+            NotificationPermission::Allowed
         } else {
-            PERMISSION_DENIED
-        },
-        Ordering::Relaxed,
-    );
+            NotificationPermission::Denied
+        };
+    }
 }
 
 /// Windows shows toasts without asking first.

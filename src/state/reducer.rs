@@ -70,6 +70,15 @@ fn reduce_ui_action(state: &mut UiState, action: UiAction) -> ReducerOutput {
                 )],
             }
         }
+        UiAction::SetNotifySound { enabled } => {
+            let previous = std::mem::replace(&mut state.notifications.notify_sound, enabled);
+            ReducerOutput {
+                effects: vec![Effect::Backend(BackendCommand::SetNotifySound {
+                    enabled,
+                    previous,
+                })],
+            }
+        }
         UiAction::StartApp => {
             state.app.boot_phase = BootPhase::HydratingLocalState;
             ReducerOutput {
@@ -1763,6 +1772,9 @@ fn reduce_backend_event(state: &mut UiState, event: BackendEvent) -> ReducerOutp
         BackendEvent::BootStatus(status) => {
             state.app.boot_status = status.clone();
         }
+        BackendEvent::NotifySoundLoaded { enabled } => {
+            state.notifications.notify_sound = enabled;
+        }
         BackendEvent::KeybaseNotifyStub { .. }
         | BackendEvent::BenchmarkPulse(_)
         | BackendEvent::DesktopNotification(_) => {}
@@ -1842,6 +1854,9 @@ fn reduce_command_failure(
                 .workspace
                 .leaving_conversation_ids
                 .remove(&conversation_id);
+        }
+        BackendCommand::SetNotifySound { previous, .. } => {
+            state.notifications.notify_sound = previous;
         }
         BackendCommand::SetConversationNotificationSettings {
             conversation_id,
@@ -4964,6 +4979,39 @@ mod tests {
                 .get(&user_id)
                 .expect("profile should exist")
         ));
+    }
+
+    #[test]
+    fn notify_sound_applies_at_once_and_reverts_when_keybase_rejects_it() {
+        let mut state = UiState::default();
+        reduce_backend_event(
+            &mut state,
+            BackendEvent::NotifySoundLoaded { enabled: true },
+        );
+        assert!(state.notifications.notify_sound);
+
+        let output = reduce_ui_action(&mut state, UiAction::SetNotifySound { enabled: false });
+        assert!(!state.notifications.notify_sound);
+        let [Effect::Backend(command)] = output.effects.as_slice() else {
+            panic!("expected one backend command");
+        };
+        assert!(matches!(
+            command,
+            BackendCommand::SetNotifySound {
+                enabled: false,
+                previous: true
+            }
+        ));
+
+        reduce_backend_event(
+            &mut state,
+            BackendEvent::CommandFailed {
+                command: Box::new(command.clone()),
+                error: "Keybase did not answer".to_string(),
+            },
+        );
+        assert!(state.notifications.notify_sound);
+        assert_eq!(state.notifications.toasts, vec!["Keybase did not answer"]);
     }
 
     #[test]

@@ -575,6 +575,14 @@ impl BackendRouter {
                     user_id,
                 })
             }
+            BackendCommand::SetNotifySound { enabled, .. } => {
+                let (account_id, backend_id) = self.default_account_backend()?;
+                let backend = self.backend_for_binding(&backend_id)?;
+                backend.execute(RoutedBackendCommand::SetNotifySound {
+                    account_id,
+                    enabled,
+                })
+            }
             BackendCommand::UnfollowUser { user_id } => {
                 let (account_id, backend_id) = self.default_account_backend()?;
                 let backend = self.backend_for_binding(&backend_id)?;

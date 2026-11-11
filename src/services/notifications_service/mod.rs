@@ -2,13 +2,7 @@
 //! macOS app bundles and Windows post; other builds do nothing.
 
 use crate::domain::ids::{ConversationId, MessageId};
-use std::{
-    path::Path,
-    sync::{
-        OnceLock,
-        atomic::{AtomicBool, Ordering},
-    },
-};
+use std::{path::Path, sync::OnceLock};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 /// The message a clicked banner points at.
@@ -20,23 +14,13 @@ pub struct ClickedNotification {
 
 static CLICKS: OnceLock<UnboundedSender<ClickedNotification>> = OnceLock::new();
 
-/// Keybase's "Play a sound for new messages" setting, shared with the Keybase
-/// app. The backend loads it on connect; Settings changes it.
-static SOUND: AtomicBool = AtomicBool::new(false);
-
-pub fn sound_enabled() -> bool {
-    SOUND.load(Ordering::Relaxed)
-}
-
-pub fn set_sound_enabled(enabled: bool) {
-    SOUND.store(enabled, Ordering::Relaxed);
-}
+/// The settings button's label and the explanation when the OS blocks zBase.
+pub use platform::{DENIED_DESCRIPTION, OPEN_SETTINGS_LABEL};
 
 /// Names the app to the OS. Call before the first window opens: Windows
 /// groups the taskbar button and lists notifications under this identity.
 pub fn register_app() {
-    #[cfg(target_os = "windows")]
-    windows::register_app();
+    platform::register_app();
 }
 
 /// Starts the bridge once and returns the stream of clicked banners, or `None`
@@ -74,13 +58,7 @@ pub enum NotificationPermission {
 
 /// The last answer from the OS. Call `refresh_permission` to ask again.
 pub fn permission() -> NotificationPermission {
-    match platform::permission() {
-        1 => NotificationPermission::NotAsked,
-        2 => NotificationPermission::Denied,
-        3 => NotificationPermission::Allowed,
-        4 => NotificationPermission::Silenced,
-        _ => NotificationPermission::Unavailable,
-    }
+    platform::permission()
 }
 
 /// Asks the OS again in the background; `permission` reports the answer later.
@@ -113,10 +91,13 @@ fn clicked(target: ClickedNotification) {
 
 #[cfg(target_os = "macos")]
 mod platform {
-    use super::{ClickedNotification, clicked};
+    use super::{ClickedNotification, NotificationPermission, clicked};
     use crate::domain::ids::{ConversationId, MessageId};
     use std::ffi::{CStr, CString, c_char};
     use std::path::Path;
+
+    pub const OPEN_SETTINGS_LABEL: &str = "Open System Settings…";
+    pub const DENIED_DESCRIPTION: &str = "Off. macOS isn't allowing notifications from zBase.";
 
     unsafe extern "C" {
         fn zbase_notifications_start(on_click: extern "C" fn(*const c_char, *const c_char))
@@ -152,6 +133,8 @@ mod platform {
         });
     }
 
+    pub fn register_app() {}
+
     pub fn start() -> bool {
         // SAFETY: `on_click` matches the bridge's callback type.
         unsafe { zbase_notifications_start(on_click) }
@@ -186,9 +169,16 @@ mod platform {
         unsafe { zbase_seconds_since_user_input() }
     }
 
-    pub fn permission() -> i32 {
+    /// The codes come from the `Permission…` enum in the bridge.
+    pub fn permission() -> NotificationPermission {
         // SAFETY: reads an atomic in the bridge.
-        unsafe { zbase_notifications_permission() }
+        match unsafe { zbase_notifications_permission() } {
+            1 => NotificationPermission::NotAsked,
+            2 => NotificationPermission::Denied,
+            3 => NotificationPermission::Allowed,
+            4 => NotificationPermission::Silenced,
+            _ => NotificationPermission::Unavailable,
+        }
     }
 
     pub fn refresh_permission() {
@@ -208,14 +198,19 @@ mod platform {
 }
 
 #[cfg(target_os = "windows")]
-mod windows;
-#[cfg(target_os = "windows")]
-use windows as platform;
+#[path = "windows.rs"]
+mod platform;
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 mod platform {
-    use super::ClickedNotification;
+    use super::{ClickedNotification, NotificationPermission};
     use std::path::Path;
+
+    // Never shown: Settings hides the row when notifications are unavailable.
+    pub const OPEN_SETTINGS_LABEL: &str = "Open Settings…";
+    pub const DENIED_DESCRIPTION: &str = "Off.";
+
+    pub fn register_app() {}
 
     pub fn start() -> bool {
         false
@@ -227,8 +222,8 @@ mod platform {
         0.0
     }
 
-    pub fn permission() -> i32 {
-        0
+    pub fn permission() -> NotificationPermission {
+        NotificationPermission::Unavailable
     }
 
     pub fn refresh_permission() {}

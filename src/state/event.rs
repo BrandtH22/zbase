@@ -156,6 +156,10 @@ pub enum BackendEvent {
         newer_cursor: Option<String>,
     },
     MessageUpserted(MessageRecord),
+    /// Keybase's "Play a sound for new messages" setting, read on connect.
+    NotifySoundLoaded {
+        enabled: bool,
+    },
     /// Keybase asked for a desktop banner for this message.
     DesktopNotification(crate::domain::desktop_notification::DesktopNotification),
     MessageAttachmentsUpdated {

@@ -169,6 +169,10 @@ pub enum BackendCommand {
         settings: ConversationNotificationSettings,
         previous: ConversationNotificationSettings,
     },
+    SetNotifySound {
+        enabled: bool,
+        previous: bool,
+    },
 }
 
 #[derive(Clone, Debug)]
