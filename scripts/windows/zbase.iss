@@ -38,9 +38,15 @@ Source: "{#StageDir}\zbase.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#StageDir}\*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#StageDir}\licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion recursesubdirs
 
+; The app user model ID matches the one zbase.exe sets; Windows needs it to
+; show toasts and to group the taskbar button with the shortcut.
 [Icons]
-Name: "{autoprograms}\zBase"; Filename: "{app}\zbase.exe"
-Name: "{autodesktop}\zBase"; Filename: "{app}\zbase.exe"; Tasks: desktopicon
+Name: "{autoprograms}\zBase"; Filename: "{app}\zbase.exe"; AppUserModelID: "com.zbase.app"
+Name: "{autodesktop}\zBase"; Filename: "{app}\zbase.exe"; Tasks: desktopicon; AppUserModelID: "com.zbase.app"
+
+; zbase.exe registers its app ID for notifications on launch; remove it on uninstall.
+[Registry]
+Root: HKCU; Subkey: "Software\Classes\AppUserModelId\com.zbase.app"; Flags: uninsdeletekey dontcreatekey
 
 [Run]
 Filename: "{app}\zbase.exe"; Description: "{cm:LaunchProgram,zBase}"; Flags: nowait postinstall skipifsilent

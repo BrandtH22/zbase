@@ -5,4 +5,4 @@ mod paths;
 mod rpc;
 mod task_runtime;
 
-pub use adapter::KeybaseBackend;
+pub use adapter::{KeybaseBackend, save_notify_sound};

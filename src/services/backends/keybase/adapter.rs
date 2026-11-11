@@ -92,6 +92,7 @@ use super::{
 };
 
 use crate::services::local_store::paths as store_paths;
+use crate::services::notifications_service;
 use crate::util::video_decoder::extract_video_thumbnail_to_file;
 
 fn benchmark_read_only() -> bool {
@@ -2115,6 +2116,9 @@ async fn run_listener_session(
     let counts = parse_badge_state(&badges)
         .ok_or_else(|| io::Error::other("invalid Keybase badge snapshot"))?;
     emit_badge_state(sender, local_store, counts, true)?;
+    if let Some(notify_sound) = notify_sound {
+        notifications_service::set_sound_enabled(notify_sound);
+    }
     sender
         .send(BackendEvent::AccountConnected {
             account_id: account_id.clone(),
@@ -2342,7 +2346,9 @@ async fn run_listener_session(
                 }
             }
         }
-        if let Some(notification) = parse_desktop_notification_from_notify(&event, notify_sound)
+        // Read per message: Settings can change it while connected.
+        if let Some(notification) =
+            parse_desktop_notification_from_notify(&event, notifications_service::sound_enabled())
             && sender
                 .send(BackendEvent::DesktopNotification(notification))
                 .is_err()
@@ -10215,18 +10221,47 @@ fn parse_desktop_notification_from_notify(
     })
 }
 
-/// Keybase's "Play a sound for new messages" setting, off unless set.
-async fn fetch_notify_sound(client: &mut KeybaseRpcClient) -> bool {
+const NOTIFY_SOUND_PATH: &str = "notifySound";
+
+/// Keybase's "Play a sound for new messages" setting: off when never set,
+/// `None` when it could not be read, so a failed read keeps the last value.
+async fn fetch_notify_sound(client: &mut KeybaseRpcClient) -> Option<bool> {
     let args = vec![Value::Map(vec![(
         Value::from("path"),
-        Value::from("notifySound"),
+        Value::from(NOTIFY_SOUND_PATH),
     )])];
-    client
+    let value = client
         .call("keybase.1.config.guiGetValue", args)
         .await
-        .ok()
-        .and_then(|value| map_get(&value, "b").and_then(as_bool))
-        .unwrap_or(false)
+        .ok()?;
+    Some(map_get(&value, "b").and_then(as_bool).unwrap_or(false))
+}
+
+/// Saves the sound setting where the Keybase app keeps it, so both apps agree.
+pub fn save_notify_sound(enabled: bool) -> io::Result<()> {
+    let path = socket_path()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Keybase socket not found"))?;
+    let runtime = Builder::new_current_thread().enable_all().build()?;
+    runtime.block_on(async move {
+        let transport = FramedMsgpackTransport::connect(&path).await?;
+        let mut client = KeybaseRpcClient::new(transport);
+        client
+            .call(
+                "keybase.1.config.guiSetValue",
+                vec![Value::Map(vec![
+                    (Value::from("path"), Value::from(NOTIFY_SOUND_PATH)),
+                    (
+                        Value::from("value"),
+                        Value::Map(vec![
+                            (Value::from("isNull"), Value::from(false)),
+                            (Value::from("b"), Value::from(enabled)),
+                        ]),
+                    ),
+                ])],
+            )
+            .await
+            .map(|_| ())
+    })
 }
 
 fn parse_live_reaction_map_deltas_from_notify(

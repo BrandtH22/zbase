@@ -30,7 +30,7 @@ zBase uses the local Keybase service and your existing Keybase account. Keep the
 2. Download `zBase-<version>-windows-x64-setup.exe` from the [latest GitHub release](https://github.com/cameroncooper/zbase/releases/latest) and run it. No administrator rights are needed.
 3. The installer is not code-signed yet, so Windows may show "Windows protected your PC": choose **More info → Run anyway**.
 
-Launch zBase from the Start Menu. To uninstall, use **Settings → Apps → Installed apps → zBase**. zBase does not play sounds or show desktop notifications; keep the Keybase app running in the tray if you want them. See [Windows releases](docs/windows-releases.md) for how the installer is built.
+Launch zBase from the Start Menu. To uninstall, use **Settings → Apps → Installed apps → zBase**. zBase shows desktop notifications for the messages Keybase marks for one. Turn them, and their sound, on or off under **Settings → System → Notifications → zBase**; **Play a sound** in zBase's Settings is the same switch as in the Keybase app. See [Windows releases](docs/windows-releases.md) for how the installer is built.
 
 ### Optional: Homebrew source installation
 

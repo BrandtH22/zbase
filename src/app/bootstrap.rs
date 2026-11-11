@@ -28,6 +28,7 @@ pub fn run() {
 
         super::key_bindings::install(cx);
         cx.set_menus(app_menus());
+        crate::services::notifications_service::register_app();
         open_main_window(cx);
         if let Some(mut clicks) = crate::services::notifications_service::start() {
             cx.spawn(async move |cx| {

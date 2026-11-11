@@ -1,8 +1,14 @@
 //! Posts desktop banners and reports which one the user clicked.
-//! Only macOS app bundles post; other builds do nothing.
+//! macOS app bundles and Windows post; other builds do nothing.
 
 use crate::domain::ids::{ConversationId, MessageId};
-use std::{path::Path, sync::OnceLock};
+use std::{
+    path::Path,
+    sync::{
+        OnceLock,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 /// The message a clicked banner points at.
@@ -13,6 +19,25 @@ pub struct ClickedNotification {
 }
 
 static CLICKS: OnceLock<UnboundedSender<ClickedNotification>> = OnceLock::new();
+
+/// Keybase's "Play a sound for new messages" setting, shared with the Keybase
+/// app. The backend loads it on connect; Settings changes it.
+static SOUND: AtomicBool = AtomicBool::new(false);
+
+pub fn sound_enabled() -> bool {
+    SOUND.load(Ordering::Relaxed)
+}
+
+pub fn set_sound_enabled(enabled: bool) {
+    SOUND.store(enabled, Ordering::Relaxed);
+}
+
+/// Names the app to the OS. Call before the first window opens: Windows
+/// groups the taskbar button and lists notifications under this identity.
+pub fn register_app() {
+    #[cfg(target_os = "windows")]
+    windows::register_app();
+}
 
 /// Starts the bridge once and returns the stream of clicked banners, or `None`
 /// when this build cannot post notifications.
@@ -33,10 +58,11 @@ pub fn post(
     platform::post(title, body, image, target, sound);
 }
 
-/// Whether macOS shows zBase's banners.
+/// Whether the OS shows zBase's banners.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum NotificationPermission {
-    /// This build cannot post: not macOS, or not running as an app bundle.
+    /// This build cannot post: not macOS or Windows, or a macOS build not
+    /// running as an app bundle.
     #[default]
     Unavailable,
     NotAsked,
@@ -46,7 +72,7 @@ pub enum NotificationPermission {
     Silenced,
 }
 
-/// The last answer from macOS. Call `refresh_permission` to ask again.
+/// The last answer from the OS. Call `refresh_permission` to ask again.
 pub fn permission() -> NotificationPermission {
     match platform::permission() {
         1 => NotificationPermission::NotAsked,
@@ -57,17 +83,18 @@ pub fn permission() -> NotificationPermission {
     }
 }
 
-/// Asks macOS again in the background; `permission` reports the answer later.
+/// Asks the OS again in the background; `permission` reports the answer later.
 pub fn refresh_permission() {
     platform::refresh_permission();
 }
 
-/// Shows the macOS prompt, if zBase has not asked yet.
+/// Shows the macOS prompt, if zBase has not asked yet. Windows has none.
 pub fn request_permission() {
     platform::request_permission();
 }
 
-/// Opens zBase's page in System Settings → Notifications.
+/// Opens zBase's notification settings: System Settings on macOS, Settings →
+/// System → Notifications on Windows.
 pub fn open_settings() {
     platform::open_settings();
 }
@@ -77,7 +104,7 @@ pub fn seconds_since_user_input() -> f64 {
     platform::seconds_since_user_input()
 }
 
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
 fn clicked(target: ClickedNotification) {
     if let Some(sender) = CLICKS.get() {
         let _ = sender.send(target);
@@ -180,7 +207,12 @@ mod platform {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+mod windows;
+#[cfg(target_os = "windows")]
+use windows as platform;
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 mod platform {
     use super::ClickedNotification;
     use std::path::Path;

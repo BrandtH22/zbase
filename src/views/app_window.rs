@@ -6780,6 +6780,19 @@ impl AppWindow {
         }
     }
 
+    /// Applies at once and saves to Keybase in the background, undoing the
+    /// change if Keybase cannot store it.
+    pub(crate) fn set_notification_sound(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        notifications_service::set_sound_enabled(enabled);
+        std::thread::spawn(move || {
+            if let Err(error) = crate::services::backends::keybase::save_notify_sound(enabled) {
+                tracing::warn!("could not save the notification sound setting: {error}");
+                notifications_service::set_sound_enabled(!enabled);
+            }
+        });
+        self.refresh(cx);
+    }
+
     pub(crate) fn set_reduced_motion(&mut self, reduced: bool, cx: &mut Context<Self>) {
         if self.models.set_reduced_motion(reduced) {
             self.persist_settings();
@@ -9457,6 +9470,7 @@ impl AppWindow {
             sidebar_mode: self.models.sidebar.mode,
             updates: self.update_ui.snapshot.clone(),
             notification_permission: self.notification_permission,
+            notification_sound: notifications_service::sound_enabled(),
             account: app.current_user_id.as_ref().map(|user_id| {
                 crate::views::preferences::AccountSummary {
                     display_name: if app.current_user_display_name.trim().is_empty() {
